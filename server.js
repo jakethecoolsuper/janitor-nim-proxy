@@ -1,5 +1,8 @@
 const express = require("express");
 const cors = require("cors");
+const axios = require("axios");
+const http = require("http");
+const https = require("https");
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -11,9 +14,12 @@ app.use(express.urlencoded({ limit: "100mb", extended: true }));
 const NIM_API_BASE = "https://integrate.api.nvidia.com/v1";
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
 
-// Map OpenAI names and GLM to working NVIDIA NIM identifiers
+// Custom HTTP/HTTPS agents to prevent sockets from dropping
+const httpAgent = new http.Agent({ keepAlive: true });
+const httpsAgent = new https.Agent({ keepAlive: true });
+
 const MODEL_MAPPING = {
-  "gpt-4o": "z-ai/glm-5.2",
+  "gpt-4o": "meta/llama-3.3-70b-instruct",
   "gpt-4": "meta/llama-3.3-70b-instruct",
   "gpt-3.5-turbo": "meta/llama-3.1-8b-instruct",
   "claude-3-opus": "deepseek-ai/deepseek-r1",
@@ -41,7 +47,6 @@ app.post("/v1/chat/completions", async (req, res) => {
       return res.status(500).json({ error: { message: "NVIDIA_API_KEY missing in Render env vars." } });
     }
 
-    // Resolve model name or fallback to Llama 3.3 70B
     const requestedModel = req.body.model || "gpt-4o";
     const nimModel = MODEL_MAPPING[requestedModel] || requestedModel;
 
@@ -51,48 +56,45 @@ app.post("/v1/chat/completions", async (req, res) => {
       stream: req.body.stream ?? true
     };
 
-    console.log(`Forwarding: ${requestedModel} -> ${nimModel} (Stream: ${payload.stream})`);
+    console.log(`Forwarding request: ${requestedModel} -> ${nimModel}`);
 
-    const nvidiaResponse = await fetch(`${NIM_API_BASE}/chat/completions`, {
-      method: "POST",
+    const response = await axios({
+      method: "post",
+      url: `${NIM_API_BASE}/chat/completions`,
       headers: {
         "Authorization": `Bearer ${NVIDIA_API_KEY.trim()}`,
-        "Content-Type": "application/json",
-        "Accept": payload.stream ? "text/event-stream" : "application/json"
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify(payload)
+      data: payload,
+      responseType: payload.stream ? "stream" : "json",
+      httpAgent,
+      httpsAgent,
+      timeout: 120000 // 2-minute timeout
     });
 
-    if (!nvidiaResponse.ok) {
-      const errorText = await nvidiaResponse.text();
-      console.error(`NVIDIA HTTP ${nvidiaResponse.status}:`, errorText);
-      return res.status(nvidiaResponse.status).send(errorText);
-    }
-
-    // Stream directly back to Janitor AI
     if (payload.stream) {
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      const reader = nvidiaResponse.body.getReader();
-      const decoder = new TextDecoder();
+      response.data.pipe(res);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        res.write(decoder.decode(value, { stream: true }));
-      }
-      return res.end();
+      response.data.on("error", (err) => {
+        console.error("Stream pipe error:", err.message);
+        res.end();
+      });
+    } else {
+      return res.json(response.data);
     }
 
-    const data = await nvidiaResponse.json();
-    return res.json(data);
-
   } catch (err) {
-    console.error("Proxy error:", err.message);
+    const errorDetails = err.response ? JSON.stringify(err.response.data) : err.message;
+    console.error("Proxy Axios Error:", errorDetails);
+    
     if (!res.headersSent) {
-      return res.status(500).json({ error: { message: err.message } });
+      return res.status(err.response?.status || 500).json({
+        error: { message: `NVIDIA API Error: ${errorDetails}` }
+      });
     }
     return res.end();
   }
