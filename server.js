@@ -23,7 +23,9 @@ const MODEL_MAPPING = {
   "gpt-4": "meta/llama-3.3-70b-instruct",
   "gpt-3.5-turbo": "meta/llama-3.1-8b-instruct",
   "claude-3-opus": "deepseek-ai/deepseek-r1",
-  "z-ai/glm-5.2": "z-ai/glm-5.2"
+  "z-ai/glm-5.2": "z-ai/glm-5.2",
+  "deepseek": "deepseek-ai/deepseek-v4-pro",
+  "nvidia": "nvidia/nemotron-3-ultra-550b-a55b"
 };
 
 app.get("/health", (req, res) => {
