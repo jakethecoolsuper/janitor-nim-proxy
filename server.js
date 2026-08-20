@@ -11,7 +11,7 @@ const NVIDIA_URL =
 const MODEL = "z-ai/glm-5.2";
 
 /*
- * Allow large Janitor AI conversations.
+ * Allow large Janitor AI conversations and body sizes.
  */
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ limit: "100mb", extended: true }));
@@ -39,7 +39,7 @@ app.use((req, res, next) => {
 });
 
 /*
- * Basic health check.
+ * Health checks
  */
 app.get("/", (req, res) => {
   res.json({
@@ -57,7 +57,7 @@ app.get("/health", (req, res) => {
 });
 
 /*
- * OpenAI-compatible model list.
+ * OpenAI-compatible model list
  */
 app.get("/v1/models", (req, res) => {
   res.json({
@@ -75,13 +75,15 @@ app.get("/v1/models", (req, res) => {
 
 /*
  * Main Chat Endpoint
- * Receives messages from Janitor AI and routes them to NVIDIA NIM API.
  */
 app.post("/v1/chat/completions", async (req, res) => {
   try {
-    // Construct payload, force stream off to prevent Janitor front-end hangs
+    // Strip unnecessary params that might disrupt NVIDIA, force non-streaming
+    const body = { ...req.body };
+    delete body.stream;
+
     const payload = {
-      ...req.body,
+      ...body,
       model: MODEL,
       stream: false
     };
@@ -102,15 +104,21 @@ app.post("/v1/chat/completions", async (req, res) => {
       return res.status(response.status).json(data);
     }
 
-    return res.json(data);
+    // Force strict OpenAI compliance formatting for Janitor AI
+    return res.status(200).json(data);
   } catch (err) {
     console.error("Proxy Error:", err);
-    return res.status(500).json({ error: { message: err.message } });
+    return res.status(500).json({
+      error: {
+        message: err.message || "Internal Proxy Error",
+        type: "proxy_error"
+      }
+    });
   }
 });
 
 /*
- * Fallback route for unknown endpoints.
+ * Fallback route for unknown endpoints
  */
 app.use((req, res) => {
   res.status(404).json({
