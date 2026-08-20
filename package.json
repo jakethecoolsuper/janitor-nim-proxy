@@ -1,15 +1,16 @@
 {
-  "name": "janitor-nvidia-glm-proxy",
+  "name": "openai-nim-proxy",
   "version": "1.0.0",
-  "description": "OpenAI-compatible proxy for NVIDIA NIM GLM-5.2",
+  "description": "OpenAI compatible proxy for NVIDIA NIM API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  },
   "engines": {
     "node": ">=20 <25"
-  },
-  "dependencies": {
-    "express": "^4.21.2"
   }
 }
