@@ -39,7 +39,7 @@ app.use((req, res, next) => {
 });
 
 /*
- * Health checks
+ * Basic health check.
  */
 app.get("/", (req, res) => {
   res.json({
@@ -57,7 +57,7 @@ app.get("/health", (req, res) => {
 });
 
 /*
- * OpenAI-compatible model list
+ * OpenAI-compatible model list.
  */
 app.get("/v1/models", (req, res) => {
   res.json({
@@ -74,13 +74,16 @@ app.get("/v1/models", (req, res) => {
 });
 
 /*
- * Main chat handler: forwards requests from Janitor to NVIDIA
+ * Main Chat Endpoint
+ * Receives messages from Janitor AI and routes them to NVIDIA NIM API.
  */
 app.post("/v1/chat/completions", async (req, res) => {
   try {
+    // Construct payload, force stream off to prevent Janitor front-end hangs
     const payload = {
       ...req.body,
-      model: MODEL
+      model: MODEL,
+      stream: false
     };
 
     const response = await fetch(NVIDIA_URL, {
@@ -107,10 +110,15 @@ app.post("/v1/chat/completions", async (req, res) => {
 });
 
 /*
- * Fallback route for unknown endpoints
+ * Fallback route for unknown endpoints.
  */
 app.use((req, res) => {
-  res.status(404).json({ error: { message: "Endpoint not found.", type: "not_found" } });
+  res.status(404).json({
+    error: {
+      message: "Endpoint not found.",
+      type: "not_found"
+    }
+  });
 });
 
 app.listen(PORT, "0.0.0.0", () => {
