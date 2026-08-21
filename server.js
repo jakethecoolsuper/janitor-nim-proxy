@@ -25,6 +25,7 @@ const MODEL_MAPPING = {
   "claude-3-opus": "deepseek-ai/deepseek-r1",
   "z-ai/glm-5.2": "z-ai/glm-5.2",
   "deepseek-flash": "deepseek-ai/deepseek-v4-flash-0731",
+  "gemma": "google/gemma-4-31b-it",
   "nvidia": "nvidia/nemotron-3-ultra-550b-a55b"
 };
 
