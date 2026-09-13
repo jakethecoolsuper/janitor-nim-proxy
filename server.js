@@ -45,62 +45,76 @@ app.get("/v1/models", (req, res) => {
 });
 
 app.post("/v1/chat/completions", async (req, res) => {
-  try {
-    if (!NVIDIA_API_KEY) {
-      console.error("Missing NVIDIA_API_KEY in Render Environment!");
-      return res.status(500).json({ error: { message: "NVIDIA_API_KEY missing in Render env vars." } });
+  if (!NVIDIA_API_KEY) {
+    console.error("Missing NVIDIA_API_KEY in Render Environment!");
+    return res.status(500).json({ error: { message: "NVIDIA_API_KEY missing in Render env vars." } });
+  }
+
+  const requestedModel = req.body.model || "gpt-4o";
+  const nimModel = MODEL_MAPPING[requestedModel] || requestedModel;
+
+  const payload = {
+    ...req.body,
+    model: nimModel,
+    stream: req.body.stream ?? true
+  };
+
+  const maxRetries = 3;
+  let response;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Forwarding request (Attempt ${attempt}): ${requestedModel} -> ${nimModel}`);
+
+      response = await axios({
+        method: "post",
+        url: `${NIM_API_BASE}/chat/completions`,
+        headers: {
+          "Authorization": `Bearer ${NVIDIA_API_KEY.trim()}`,
+          "Content-Type": "application/json"
+        },
+        data: payload,
+        responseType: payload.stream ? "stream" : "json",
+        httpAgent,
+        httpsAgent,
+        timeout: 120000 // 2-minute timeout
+      });
+
+      break; // Success: break loop
+    } catch (err) {
+      const isTimeout = err.code === "ECONNABORTED" || err.message.includes("timeout");
+      const isRetryableStatus = err.response && err.response.status >= 500;
+      const errorDetails = err.response ? JSON.stringify(err.response.data) : err.message;
+
+      console.error(`Attempt ${attempt} failed:`, errorDetails);
+
+      if (attempt === maxRetries || (!isTimeout && !isRetryableStatus)) {
+        if (!res.headersSent) {
+          return res.status(err.response?.status || 500).json({
+            error: { message: `NVIDIA API Error: ${errorDetails}` }
+          });
+        }
+        return res.end();
+      }
+
+      // Delay 1 second before retrying
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
+  }
 
-    const requestedModel = req.body.model || "gpt-4o";
-    const nimModel = MODEL_MAPPING[requestedModel] || requestedModel;
+  if (payload.stream) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
 
-    const payload = {
-      ...req.body,
-      model: nimModel,
-      stream: req.body.stream ?? true
-    };
+    response.data.pipe(res);
 
-    console.log(`Forwarding request: ${requestedModel} -> ${nimModel}`);
-
-    const response = await axios({
-      method: "post",
-      url: `${NIM_API_BASE}/chat/completions`,
-      headers: {
-        "Authorization": `Bearer ${NVIDIA_API_KEY.trim()}`,
-        "Content-Type": "application/json"
-      },
-      data: payload,
-      responseType: payload.stream ? "stream" : "json",
-      httpAgent,
-      httpsAgent,
-      timeout: 120000 // 2-minute timeout
+    response.data.on("error", (err) => {
+      console.error("Stream pipe error:", err.message);
+      res.end();
     });
-
-    if (payload.stream) {
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-
-      response.data.pipe(res);
-
-      response.data.on("error", (err) => {
-        console.error("Stream pipe error:", err.message);
-        res.end();
-      });
-    } else {
-      return res.json(response.data);
-    }
-
-  } catch (err) {
-    const errorDetails = err.response ? JSON.stringify(err.response.data) : err.message;
-    console.error("Proxy Axios Error:", errorDetails);
-    
-    if (!res.headersSent) {
-      return res.status(err.response?.status || 500).json({
-        error: { message: `NVIDIA API Error: ${errorDetails}` }
-      });
-    }
-    return res.end();
+  } else {
+    return res.json(response.data);
   }
 });
 
