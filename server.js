@@ -28,6 +28,7 @@ const MODEL_MAPPING = {
   "kimi-k3": "moonshotai/kimi-k3",
   "gemma": "google/gemma-4-31b-it",
   "deepseek-v4.1-flash": "deepseek-ai/deepseek-v4.1-flash",
+  "glm-5.3": "z-ai/glm-5.3",
   "nvidia": "nvidia/nemotron-3-ultra-550b-a55b"
 };
 
